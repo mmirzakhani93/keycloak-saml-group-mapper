@@ -42,6 +42,7 @@ import org.keycloak.models.GroupModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -174,6 +175,7 @@ public abstract class AbstractAttributeToGroupMapper extends AbstractIdentityPro
         List<String> attributeValues = this.getAttributeValues(attributeName, context);
         checkAttributeValues(attributeValues, attributeName);
 
+        Collections.sort(attributeValues);
         for (String attributeValue : attributeValues) {
             GroupModel groupModel = this.buildGroup(realm, group, attributeValue);
             user.joinGroup(groupModel);
