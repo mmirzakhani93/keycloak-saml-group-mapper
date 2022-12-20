@@ -3,6 +3,8 @@
     <deployment>
         <dependencies>
             <module name="org.keycloak.keycloak-services" />
+            <module name="org.keycloak.keycloak-saml-core" />
+            <module name="org.keycloak.keycloak-saml-core-public" />
         </dependencies>
     </deployment>
 </jboss-deployment-structure>

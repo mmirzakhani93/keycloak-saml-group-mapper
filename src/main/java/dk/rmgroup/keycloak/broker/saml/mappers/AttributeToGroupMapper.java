@@ -57,10 +57,6 @@ public class AttributeToGroupMapper extends AbstractAttributeToGroupMapper imple
 
     private static final List<ProviderConfigProperty> configProperties = new ArrayList<ProviderConfigProperty>();
 
-    public static final String ATTRIBUTE_NAME = "attribute.name";
-    public static final String ATTRIBUTE_FRIENDLY_NAME = "attribute.friendly.name";
-    public static final String ATTRIBUTE_VALUE = "attribute.value";
-
     private static final Set<IdentityProviderSyncMode> IDENTITY_PROVIDER_SYNC_MODES = new HashSet<>(Arrays.asList(IdentityProviderSyncMode.values()));
 
     static {
@@ -178,5 +174,27 @@ public class AttributeToGroupMapper extends AbstractAttributeToGroupMapper imple
                 }
             }
         }
+    }
+
+    protected List<String> getAttributeValues(String attributeName, final BrokeredIdentityContext context) {
+
+        List<String> attributeValues = new ArrayList<>();
+
+        if (attributeName != null && attributeName.trim().equals("")) attributeName = null;
+
+        AssertionType assertion = (AssertionType)context.getContextData().get(SAMLEndpoint.SAML_ASSERTION);
+
+        for (AttributeStatementType statement : assertion.getAttributeStatements()) {
+            for (AttributeStatementType.ASTChoiceType choice : statement.getAttributes()) {
+                AttributeType attr = choice.getAttribute();
+                if (attributeName != null && !attributeName.equals(attr.getName())) continue;
+                for (Object val : attr.getAttributeValue()) {
+                    if (val != null) {
+                        attributeValues.add((String) val);
+                    }
+                }
+            }
+        }
+        return attributeValues;
     }
 }

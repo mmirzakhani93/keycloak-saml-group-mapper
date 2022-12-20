@@ -42,6 +42,9 @@ import org.keycloak.models.GroupModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.utils.KeycloakModelUtils;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * Abstract class that handles the logic for importing and updating brokered users for all mappers that map a SAML
  * attribute into a {@code Keycloak} group.
@@ -50,12 +53,27 @@ import org.keycloak.models.utils.KeycloakModelUtils;
  */
 public abstract class AbstractAttributeToGroupMapper extends AbstractIdentityProviderMapper {
 
+    public static final String ATTRIBUTE_VALUE = "attribute.value";
+    public static final String ATTRIBUTE_NAME = "attribute.name";
+    public static final String ATTRIBUTE_FRIENDLY_NAME = "attribute.friendly.name";
+
+    @Override
+    public void preprocessFederatedIdentity(KeycloakSession session, RealmModel realm, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+
+        UserModel userModel = KeycloakModelUtils.findUserByNameOrEmail(session, realm, context.getUsername());
+        if (userModel == null || userModel.getGroupsCount() < 0) {
+            return;
+        }
+
+        userModel.getGroupsStream().forEach(groupModel -> userModel.leaveGroup(groupModel));
+
+        this.joinUserToTheGroups(realm, userModel, mapperModel, context);
+    }
+
     @Override
     public void importNewUser(KeycloakSession session, RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
-        GroupModel group = this.getGroup(realm, mapperModel);
-        if (this.applies(mapperModel, context)) {
-            user.joinGroup(group);
-        }
+
+        this.joinUserToTheGroups(realm, user, mapperModel, context);
     }
 
     @Override
@@ -82,6 +100,7 @@ public abstract class AbstractAttributeToGroupMapper extends AbstractIdentityPro
      * @return {@code true} if the mapping can be applied or {@code false} otherwise.
      */
     protected abstract boolean applies(final IdentityProviderMapperModel mapperModel, final BrokeredIdentityContext context);
+    protected abstract List<String> getAttributeValues(String attributeName, final BrokeredIdentityContext context);
 
     /**
      * Obtains the {@link GroupModel} corresponding the group configured in the specified
@@ -101,4 +120,71 @@ public abstract class AbstractAttributeToGroupMapper extends AbstractIdentityPro
         }
         return group;
     }
+
+    private GroupModel buildGroup(final RealmModel realm, String parentGroup, String subGroups) {
+
+        GroupModel parentGroupModel = KeycloakModelUtils.findGroupByPath(realm, parentGroup);
+
+        if (parentGroupModel == null) {
+            throw new IdentityBrokerException("Unable to find group: " + parentGroupModel.getId());
+        }
+
+        String[] subGroupPaths = subGroups.split("/");
+        StringBuilder sb = new StringBuilder(parentGroup);
+        for (String subGroupPath : subGroupPaths) {
+            if (subGroupPath.isEmpty()) continue;
+
+            sb.append("/").append(subGroupPath);
+            GroupModel subGroupModel = KeycloakModelUtils.findGroupByPath(realm, sb.toString());
+            if (subGroupModel == null) {
+                parentGroupModel = realm.createGroup(subGroupPath, parentGroupModel);
+            } else {
+                parentGroupModel = subGroupModel;
+            }
+        }
+
+        return parentGroupModel;
+    }
+
+    private String getAttributeName(IdentityProviderMapperModel mapperModel) {
+
+        String attributeName = mapperModel.getConfig().get(ATTRIBUTE_NAME);
+        if (attributeName == null || attributeName.isEmpty()) {
+            throw new IdentityBrokerException("Attribute name is not provided");
+        }
+
+        return attributeName;
+    }
+
+    private String getGroupName(IdentityProviderMapperModel mapperModel) {
+
+        String group = mapperModel.getConfig().get(ConfigConstants.GROUP);
+        if (group == null || group.isEmpty()) {
+            throw new IdentityBrokerException("Group is not provided");
+        }
+
+        return group;
+    }
+
+    private void joinUserToTheGroups(RealmModel realm, UserModel user, IdentityProviderMapperModel mapperModel, BrokeredIdentityContext context) {
+
+        String group = this.getGroupName(mapperModel);
+        String attributeName = this.getAttributeName(mapperModel);
+
+        List<String> attributeValues = this.getAttributeValues(attributeName, context);
+        checkAttributeValues(attributeValues, attributeName);
+
+        for (String attributeValue : attributeValues) {
+            GroupModel groupModel = this.buildGroup(realm, group, attributeValue);
+            user.joinGroup(groupModel);
+        }
+    }
+
+    private void checkAttributeValues(List<String> attributeValues, String attributeName) {
+
+        if (attributeValues.isEmpty()) {
+            throw new IdentityBrokerException("There is not any attribute value for this attribute name: " + attributeName);
+        }
+    }
+
 }
